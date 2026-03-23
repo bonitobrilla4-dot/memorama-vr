@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Memorama VR Pro - Sanrio Pastel</title>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script>
+    let primera = null, segunda = null, bloqueado = false;
+    let oportunidades = 7, pares = 0, totalPares = 4;
+    let tiempoRestante = 45, cronometroIniciado = false, intervalo;
+
+    function mezclar(array) { return array.sort(() => Math.random() - 0.5); }
+
+    function reproducirSonido(id) {
+      const sonido = document.querySelector(id);
+      if (sonido && sonido.components.sound) {
+        sonido.components.sound.stopSound();
+        sonido.components.sound.playSound();
+      }
+    }
+
+    function iniciarTiempo() {
+      if (!cronometroIniciado) {
+        cronometroIniciado = true;
+        intervalo = setInterval(() => {
+          tiempoRestante--;
+          const timerEl = document.querySelector('#timer');
+          timerEl.setAttribute('value', 'Tiempo: ' + tiempoRestante + 's');
+          if (tiempoRestante <= 10) timerEl.setAttribute('color', '#FF8AAE');
+          if (tiempoRestante <= 0) {
+            clearInterval(intervalo);
+            reproducirSonido('#snd-fail');
+            setTimeout(() => alert('⏰ ¡TIEMPO AGOTADO!'), 500);
+          }
+        }, 1000);
+      }
+    }
+
+    function reiniciarJuego() {
+      clearInterval(intervalo);
+      cronometroIniciado = false;
+      tiempoRestante = 45;
+      oportunidades = 7;
+      pares = 0;
+      primera = null; segunda = null; bloqueado = false;
+
+      document.querySelector('#vidas').setAttribute('value', 'Vidas: ' + oportunidades);
+      document.querySelector('#timer').setAttribute('value', 'Tiempo: ' + tiempoRestante + 's');
+
+      document.querySelectorAll('.carta-entity').forEach(c => c.remove());
+      crearCartas();
+    }
+
+    AFRAME.registerComponent('carta', {
+      schema: { valor: { type: 'int' } },
+      init: function() {
+        this.volteada = false;
+        this.el.addEventListener('click', () => {
+          if (bloqueado || this.volteada || this.el === primera || tiempoRestante <= 0) return;
+          iniciarTiempo();
+          reproducirSonido('#snd-flip');
+          this.voltear();
+          if (!primera) {
+            primera = this.el;
+          } else {
+            segunda = this.el;
+            bloqueado = true;
+            verificar();
+          }
+        });
+      },
+      voltear: function() {
+        this.volteada = true;
+        this.el.setAttribute('animation', { property: 'rotation', to: '0 180 0', dur: 500 });
+      },
+      volver: function() {
+        this.volteada = false;
+        this.el.setAttribute('animation', { property: 'rotation', to: '0 0 0', dur: 500 });
+      }
+    });
+
+    function verificar() {
+      let v1 = primera.getAttribute('carta').valor;
+      let v2 = segunda.getAttribute('carta').valor;
+
+      if (v1 === v2) {
+        pares++;
+        reproducirSonido('#snd-match');
+        [primera, segunda].forEach(carta => {
+          carta.setAttribute('animation__match', {
+            property: 'scale',
+            to: '1.3 1.3 1.3',
+            dur: 300,
+            dir: 'alternate',
+            loop: 2
+          });
+        });
+
+        setTimeout(() => {
+          bloqueado = false;
+          primera = null; segunda = null;
+          if (pares === totalPares) {
+            clearInterval(intervalo);
+            reproducirSonido('#snd-win');
+            setTimeout(() => alert('🏆 ¡VICTORIA ADORABLE!'), 600);
+          }
+        }, 600);
+      } else {
+        oportunidades--;
+        document.querySelector('#vidas').setAttribute('value', 'Vidas: ' + oportunidades);
+        setTimeout(() => {
+          reproducirSonido('#snd-flip');
+          primera.components.carta.volver();
+          segunda.components.carta.volver();
+          bloqueado = false;
+          primera = null; segunda = null;
+        }, 1200);
+
+        if (oportunidades === 0) {
+          clearInterval(intervalo);
+          reproducirSonido('#snd-fail');
+          setTimeout(() => alert('💀 GAME OVER'), 1200);
+        }
+      }
+    }
+
+    function crearCartas() {
+      const escena = document.querySelector('a-scene');
+      let valores = mezclar([1, 1, 2, 2, 3, 3, 4, 4]);
+      valores.forEach((valor, i) => {
+        const fila = Math.floor(i / 4);
+        const col = i % 4;
+        const carta = document.createElement('a-entity');
+
+        // 👇 IMPORTANTE: ahora es clickable también
+        carta.setAttribute('class', 'carta-entity clickable');
+
+        carta.setAttribute('position', `${(col - 1.5) * 1.4} ${1.8 - fila * 1.7} -3`);
+        carta.setAttribute('carta', 'valor:' + valor);
+
+        const cuerpo = document.createElement('a-box');
+        cuerpo.setAttribute('width', '1'); 
+        cuerpo.setAttribute('height', '1.5'); 
+        cuerpo.setAttribute('depth', '0.05');
+        cuerpo.setAttribute('color', '#FDEAFB');
+
+        const back = document.createElement('a-plane');
+        back.setAttribute('width', '0.9'); 
+        back.setAttribute('height', '1.4'); 
+        back.setAttribute('position', '0 0 0.03');
+        back.setAttribute('material', `src: #backImg; shader: flat`);
+
+        const front = document.createElement('a-plane');
+        front.setAttribute('width', '0.9'); 
+        front.setAttribute('height', '1.4'); 
+        front.setAttribute('position', '0 0 -0.03');
+        front.setAttribute('rotation', '0 180 0');
+        front.setAttribute('material', `src: #img${valor}; shader: standard`);
+
+        carta.appendChild(cuerpo);
+        carta.appendChild(back);
+        carta.appendChild(front);
+        escena.appendChild(carta);
+      });
+    }
+
+    window.addEventListener('load', () => {
+      crearCartas();
+    });
+  </script>
+</head>
+<body>
+  <a-scene background="color: #FCE4EC">
+
+    <a-assets>
+      <img id="backImg" src="img/back.jpg">
+      <img id="img1" src="img/pochacco.jpg">
+      <img id="img2" src="img/cinnamoroll.jpg">
+      <img id="img3" src="img/keroppi.jpg">
+      <img id="img4" src="img/pompompurim.jpg">
+
+      <audio id="src-flip" src="audio/flip.mp3"></audio>
+      <audio id="src-match" src="audio/match.mp3"></audio>
+      <audio id="src-win" src="audio/win.mp3"></audio>
+      <audio id="src-fail" src="audio/fail.mp3"></audio>
+    </a-assets>
+
+    <a-entity id="snd-flip" sound="src: #src-flip"></a-entity>
+    <a-entity id="snd-match" sound="src: #src-match"></a-entity>
+    <a-entity id="snd-win" sound="src: #src-win"></a-entity>
+    <a-entity id="snd-fail" sound="src: #src-fail"></a-entity>
+
+    <a-light type="ambient" color="#FFF" intensity="0.6"></a-light>
+    <a-light type="directional" color="#FFF" intensity="0.7" position="-1 1 2"></a-light>
+
+    <!-- Cámara -->
+    <a-camera position="0 1.6 4">
+      <a-cursor fuse="true" fuse-timeout="1200" color="#FFCCDC"></a-cursor>
+    </a-camera>
+
+    <!-- 👇 CONTROLES VR (JOYSTICKS) -->
+    <a-entity laser-controls="hand: right"
+              raycaster="objects: .clickable"
+              line="color: #FFB6C1"></a-entity>
+
+    <a-entity laser-controls="hand: left"
+              raycaster="objects: .clickable"
+              line="color: #FFB6C1"></a-entity>
+
+    <a-text id="vidas" value="Vidas: 7" position="-2.5 3.5 -3" color="#E91E63" width="8"></a-text>
+    <a-text id="timer" value="Tiempo: 45s" position="0.8 3.5 -3" color="#E91E63" width="8"></a-text>
+
+    <!-- Botón -->
+    <a-box position="2 3 -3" depth="0.2" height="0.5" width="1.2" color="#FFB6C1"
+           class="clickable" id="botonReiniciar">
+      <a-text value="Reiniciar" align="center" position="0 0 0.15" color="#E91E63" width="5"></a-text>
+    </a-box>
+
+    <script>
+      document.querySelector('#botonReiniciar').addEventListener('click', reiniciarJuego);
+    </script>
+
+  </a-scene>
+</body>
+</html>
